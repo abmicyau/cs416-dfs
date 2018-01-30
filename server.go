@@ -20,6 +20,7 @@ const CLIENT_TIMEOUT = 2000000000 // Client timeout in nanoseconds
 const LOG_ENABLED = true
 
 var EMPTY_CHUNK Chunk
+var ALPHABET = []rune("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 var lock sync.Mutex
 
 // A Chunk is the unit of reading/writing in DFS.
@@ -27,8 +28,8 @@ type Chunk [CHUNK_SIZE]byte
 
 func main() {
 	server := new(Server)
-	server.clients = make(map[string]*dfsClient)
-	server.fileMap = make(map[string]*fileMetadata)
+	server.clients = make(map[string]*DFSClient)
+	server.fileMap = make(map[string]*FileMetadata)
 	rpc.Register(server)
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", os.Args[1])
@@ -46,28 +47,9 @@ func main() {
 	}
 }
 
-type dfsClient struct {
-	client        *rpc.Client
-	clientID      string
-	lastHeartbeat int64
-	mounted       bool
-}
 
-type fileMetadata struct {
-	fname         string
-	writer        *dfsClient
-	chunkOwners   []*dfsClient
-	chunkVersions []int
-	written       bool
-}
-
-type Server struct {
-	numClients int
-	clients    map[string]*dfsClient
-	fileMap    map[string]*fileMetadata
-}
-
-////
+////////////////////////////////////////////////////////////////////////////////////////////
+// <RPC ARGUMENT/RESPONSE STRUCTS>
 
 type RPCHelloData struct {
 	ClientID, ClientIP string
@@ -81,6 +63,7 @@ type RPCFileData struct {
 	Chunks    [FILE_SIZE]Chunk
 	NewChunks [FILE_SIZE]bool
 }
+
 type RPCChunkData struct {
 	ClientID string
 	FileName string
@@ -89,6 +72,41 @@ type RPCChunkData struct {
 	Success  bool
 	Data     Chunk
 }
+
+// </RPC ARGUMENT/RESPONSE STRUCTS>
+////////////////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// <OTHER TYPE DECLARATIONS>
+
+type DFSClient struct {
+	client        *rpc.Client
+	clientID      string
+	lastHeartbeat int64
+	mounted       bool
+}
+
+type FileMetadata struct {
+	fname         string
+	writer        *DFSClient
+	chunkOwners   []*DFSClient
+	chunkVersions []int
+	written       bool
+}
+
+type Server struct {
+	numClients int
+	clients    map[string]*DFSClient
+	fileMap    map[string]*FileMetadata
+}
+
+// </OTHER TYPE DECLARATIONS>
+////////////////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// <EXPORTED METHODS>
 
 // Initial greeting from a client.
 //
@@ -102,7 +120,6 @@ type RPCChunkData struct {
 //
 // The client port is used to set up the bidirectional RPC.
 //
-// Requires mutex.
 //
 func (s *Server) Hello(args *RPCHelloData, newCID *string) error {
 	logMessage("Hello() called")
@@ -125,10 +142,12 @@ func (s *Server) Hello(args *RPCHelloData, newCID *string) error {
 	return nil
 }
 
+// Mounts a single client. The client is created if it doesn't exist.
+//
 func (s *Server) mountClient(id, ip string) {
 	d := s.clients[id]
 	if d == nil {
-		d = new(dfsClient)
+		d = new(DFSClient)
 		d.clientID = id
 		d.lastHeartbeat = time.Now().UnixNano()
 		s.clients[id] = d
@@ -141,9 +160,7 @@ func (s *Server) mountClient(id, ip string) {
 }
 
 // Hearbeat method for connected clients, which will be called periodically and
-// update lastHeartbeat field to be used to detect failed clients.
-//
-// Mutex not necessary.
+// update the lastHeartbeat field to be used to detect failed clients.
 //
 func (s *Server) Heartbeat(id string, _ *struct{}) error {
 	client := s.clients[id]
@@ -157,8 +174,6 @@ func (s *Server) Heartbeat(id string, _ *struct{}) error {
 
 // Checks if a file exists anywhere in the file system
 //
-// Mutex not necessary.
-//
 func (s *Server) FileExists(fname string, exists *bool) error {
 	logMessage("FileExists() called")
 	*exists = s.fileMap[fname] != nil
@@ -166,8 +181,6 @@ func (s *Server) FileExists(fname string, exists *bool) error {
 }
 
 // Creates a new file if it doesn't exist
-//
-// Requires mutex.
 //
 func (s *Server) NewFile(fname string, _ *struct{}) error {
 	logMessage("NewFile() called")
@@ -182,8 +195,6 @@ func (s *Server) NewFile(fname string, _ *struct{}) error {
 }
 
 // Request to open a file in write mode
-//
-// Requires mutex.
 //
 func (s *Server) RequestWrite(args *RPCChunkData, granted *bool) error {
 	logMessage("RequestWrite() called")
@@ -212,8 +223,6 @@ func (s *Server) RequestWrite(args *RPCChunkData, granted *bool) error {
 
 // Attempt to fetch the most up-to-date version of each chunk of a file
 //
-// Requires mutex.
-//
 func (s *Server) GetFile(args *RPCChunkData, reply *RPCFileData) error {
 	logMessage("GetFile() called")
 	lock.Lock()
@@ -237,7 +246,6 @@ func (s *Server) GetFile(args *RPCChunkData, reply *RPCFileData) error {
 		var newChunks [FILE_SIZE]bool
 		trivial := true
 
-		// try to fetch all written chunks
 		for i := 0; i < FILE_SIZE; i++ {
 			owner := file.chunkOwners[i]
 			if owner == client {
@@ -259,8 +267,7 @@ func (s *Server) GetFile(args *RPCChunkData, reply *RPCFileData) error {
 	return nil
 }
 
-//
-// Mutex not necessary.
+// Unmounts a dfs client
 //
 func (s *Server) Unmount(id string, _ *struct{}) error {
 	logMessage("Unmount() called")
@@ -273,8 +280,7 @@ func (s *Server) Unmount(id string, _ *struct{}) error {
 	return nil
 }
 
-//
-// Requires mutex.
+// Writes a chunk to a file in the DFS
 //
 func (s *Server) WriteChunk(args *RPCChunkData, ok *bool) error {
 	logMessage("WriteChunk() called")
@@ -303,8 +309,7 @@ func (s *Server) WriteChunk(args *RPCChunkData, ok *bool) error {
 	}
 }
 
-//
-// Mutex not necessary.
+// Attempts to fetch the most up-to-date chunk of a file in the DFS
 //
 func (s *Server) GetChunk(args *RPCChunkData, reply *RPCChunkData) error {
 	logMessage("GetChunk() called")
@@ -320,6 +325,11 @@ func (s *Server) GetChunk(args *RPCChunkData, reply *RPCChunkData) error {
 	}
 
 	owner := file.chunkOwners[args.ChunkNum]
+
+	// 'NewChunk' here indicates whether or not the requesting client already has
+	// the most up-to-date version of the chunk. If the chunk is not new, then they
+	// already have the most up-to-date version and the client is notified to fetch
+	// the chunk from their local storage.
 	if owner != nil {
 		if owner == client {
 			reply.NewChunk = false
@@ -345,8 +355,7 @@ func (s *Server) GetChunk(args *RPCChunkData, reply *RPCChunkData) error {
 	return nil
 }
 
-//
-// Requires mutex.
+// Closes a file. Releases write status if necessary.
 //
 func (s *Server) CloseFile(args *RPCChunkData, _ *struct{}) error {
 	logMessage("CloseFile() called")
@@ -369,9 +378,15 @@ func (s *Server) CloseFile(args *RPCChunkData, _ *struct{}) error {
 	return nil
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// </EXPORTED METHODS>
+////////////////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// <OTHER METHODS>
 
 // If error is non-nil, print it out and return it.
+//
 func checkError(err error) error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -380,17 +395,19 @@ func checkError(err error) error {
 	return nil
 }
 
-var alphabet = []rune("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-
+// Generates a random alphanumeric client ID of a specified length
+//
 func generateClientID(length int) string {
 	id := make([]rune, length)
 	for i := range id {
-		id[i] = alphabet[rand.Intn(len(alphabet))]
+		id[i] = ALPHABET[rand.Intn(len(ALPHABET))]
 	}
 	return string(id)
 }
 
-func isClientConnected(client *dfsClient) bool {
+// Checks whether a client is currently connected.
+//
+func isClientConnected(client *DFSClient) bool {
 	if !client.mounted {
 		return false
 	} else {
@@ -398,17 +415,21 @@ func isClientConnected(client *dfsClient) bool {
 	}
 }
 
-func newFile(fname string) *fileMetadata {
-	file := new(fileMetadata)
+// Initializes and returns a pointer to a struct containing empty file metadata
+//
+func newFile(fname string) *FileMetadata {
+	file := new(FileMetadata)
 	file.fname = fname
 	file.writer = nil
-	file.chunkOwners = make([]*dfsClient, FILE_SIZE)
+	file.chunkOwners = make([]*DFSClient, FILE_SIZE)
 	file.chunkVersions = make([]int, FILE_SIZE)
 	file.written = false
 	return file
 }
 
-func requestChunk(client *dfsClient, fname string, chunkNum uint8) (chunk Chunk, err error) {
+// Requests a chunk from a client (using RPC)
+//
+func requestChunk(client *DFSClient, fname string, chunkNum uint8) (chunk Chunk, err error) {
 	if isClientConnected(client) {
 		args := &RPCChunkData{client.clientID, fname, chunkNum, false, false, EMPTY_CHUNK}
 		err = client.client.Call("Client.GetChunk", args, &chunk)
@@ -419,7 +440,11 @@ func requestChunk(client *dfsClient, fname string, chunkNum uint8) (chunk Chunk,
 	return chunk, err
 }
 
-func pollWriter(client *dfsClient, file *fileMetadata) {
+// Continuously checks whether or not a client, which has requested to write a
+// file, is currently online. If they have been disconnected for some time (longer
+// than some specified timeout) then their write status is revoked.
+//
+func pollWriter(client *DFSClient, file *FileMetadata) {
 	timeChan := time.Tick(500 * time.Millisecond)
 	for _ = range timeChan {
 		if !isClientConnected(client) {
@@ -439,3 +464,6 @@ func logMessage(msg string) {
 		fmt.Println(":" + strconv.Itoa(time.Now().Second()) + " ~ " + msg)
 	}
 }
+
+// </OTHER METHODS>
+////////////////////////////////////////////////////////////////////////////////////////////

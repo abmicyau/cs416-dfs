@@ -117,6 +117,10 @@ func (e FileDoesNotExistError) Error() string {
 // </ERROR DEFINITIONS>
 ////////////////////////////////////////////////////////////////////////////////////////////
 
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// <INTERFACE DEFINITIONS>
+
 // Represents a file in the DFS system.
 type DFSFile interface {
 	// Reads chunk number chunkNum into storage pointed to by
@@ -175,11 +179,17 @@ type DFS interface {
 	UMountDFS() (err error)
 }
 
-// Argument and reponse structs for RPC methods on the server
-//
+// </INTERFACE DEFINITIONS>
+////////////////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// <RPC ARGUMENT/RESPONSE STRUCTS>
+
 type RPCHelloData struct {
 	ClientID, ClientIP string
 }
+
 type RPCFileData struct {
 	ClientID  string
 	FileName  string
@@ -188,6 +198,7 @@ type RPCFileData struct {
 	Chunks    [FILE_SIZE]Chunk
 	NewChunks [FILE_SIZE]bool
 }
+
 type RPCChunkData struct {
 	ClientID string
 	FileName string
@@ -196,6 +207,48 @@ type RPCChunkData struct {
 	Success  bool
 	Data     Chunk
 }
+
+// </RPC ARGUMENT/RESPONSE STRUCTS>
+////////////////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// <OTHER TYPE DECLARATIONS>
+
+// The Client struct implements remotely callable methods for RPC and holds
+// most of the state of the client in the distributed file system.
+//
+type Client struct {
+	clientID     string
+	disconnected bool
+	server       *rpc.Client
+	serverAddr   string
+	localIP      string
+	localPath    string
+	mounted      bool
+}
+
+// Implements instances of the DFSFile interface
+//
+type DFSFileInstance struct {
+	fname   string
+	mode    FileMode
+	dfs     *DFSInstance
+	invalid *bool
+}
+
+// Implements instances of the DFS interface
+//
+type DFSInstance struct {
+	client *Client
+}
+
+// </OTHER TYPE DECLARATIONS>
+////////////////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// <EXPORTED METHODS>
 
 // The constructor for a new DFS object instance. Takes the server's
 // IP:port address string as parameter, the localIP to use to
@@ -213,7 +266,7 @@ type RPCChunkData struct {
 // Can return the following errors:
 // - LocalPathError
 // - Networking errors related to localIP or serverAddr
-func MountDFS(serverAddr string, localIP string, localPath string) (fs DFS, err error) {
+func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err error) {
 	client := new(Client)
 	client.disconnected = true
 	client.serverAddr = serverAddr
@@ -230,24 +283,7 @@ func MountDFS(serverAddr string, localIP string, localPath string) (fs DFS, err 
 	client.greetServer()
 	go client.heartbeat()
 
-	return dfs{client}, nil
-}
-
-//
-
-// The Client struct implements remotely callable methods for RPC and holds
-// most of the state of the client in the distributed file system.
-//
-// TODO: make changes to the disconnected property thread safe X_X ...
-//
-type Client struct {
-	clientID     string
-	disconnected bool
-	server       *rpc.Client
-	serverAddr   string
-	localIP      string
-	localPath    string
-	mounted      bool
+	return DFSInstance{client}, nil
 }
 
 // RPC method called from the DFS server to request a file chunk
@@ -261,92 +297,18 @@ func (c *Client) GetChunk(args *RPCChunkData, reply *Chunk) error {
 	return nil
 }
 
-func (c *Client) heartbeat() {
-	timeChan := time.Tick(500 * time.Millisecond)
-	for _ = range timeChan {
-		if !c.mounted {
-			return
-		}
-		if c.disconnected {
-			c.greetServer()
-		} else {
-			timeout := make(chan struct{})
-			done := make(chan *rpc.Call, 1)
-			go func() {
-				time.Sleep(time.Nanosecond*CLIENT_TIMEOUT)
-				close(timeout)
-			}()
-			c.server.Go("Server.Heartbeat", c.clientID, nil, done)
-			go func() {
-				select {
-				case <-done:
-					break
-				case <-timeout:
-					c.disconnected = true
-				}
-			}()
-		}
-	}
-}
-
-func (c *Client) greetServer() {
-	if !c.disconnected {
-		return
-	}
-
-	localAddr, err := acceptServerRPC(c.localIP)
-	if err != nil {
-		return
-	}
-
-	server, err := rpc.Dial("tcp", c.serverAddr)
-	if err == nil {
-		clientIDPath := c.localPath + ".clientid"
-		clientID := getClientID(clientIDPath)
-
-		args := &RPCHelloData{clientID, localAddr}
-		var reply string
-		err = server.Call("Server.Hello", args, &reply)
-		checkError(err)
-
-		if len(reply) > 0 {
-			c.disconnected = false
-			c.server = server
-			c.clientID = reply
-			if len(clientID) == 0 {
-				storeClientID(reply, clientIDPath)
-			}
-		} else {
-			c.disconnected = true
-			c.mounted = false
-		}
-	}
-}
-
+// Implements DFS.LocalFileExists
 //
-
-type dfs struct {
-	client *Client
-}
-
-// Check if a file with filename fname exists locally (i.e.,
-// available for DREAD reads).
-//
-// Can return the following errors:
-// - BadFilenameError (if filename contains non alpha-numeric chars or is not 1-16 chars long)
-func (d dfs) LocalFileExists(fname string) (exists bool, err error) {
+func (d DFSInstance) LocalFileExists(fname string) (exists bool, err error) {
 	if !isValidFilename(fname) {
 		return false, BadFilenameError(fname)
 	}
 	return checkFileOrDirectory(d.client.localPath + fname + ".dfs")
 }
 
-// Check if a file with filename fname exists globally.
+// Implements DFS.GlobalFile Exists
 //
-// Can return the following errors:
-// - BadFilenameError (if filename contains non alpha-numeric chars or is not 1-16 chars long)
-// - DisconnectedError
-func (d dfs) GlobalFileExists(fname string) (exists bool, err error) {
+func (d DFSInstance) GlobalFileExists(fname string) (exists bool, err error) {
 	client := d.client
 	server := client.server
 
@@ -362,18 +324,9 @@ func (d dfs) GlobalFileExists(fname string) (exists bool, err error) {
 	return exists, nil
 }
 
-// Opens a filename with name fname using mode. Creates the file
-// in READ/WRITE modes if it does not exist. Returns a handle to
-// the file through which other operations on this file can be
-// made.
+// Implements DFS.Open
 //
-// Can return the following errors:
-// - OpenWriteConflictError (in WRITE mode)
-// - DisconnectedError (in READ,WRITE modes)
-// - FileUnavailableError (in READ,WRITE modes)
-// - FileDoesNotExistError (in DREAD mode)
-// - BadFilenameError (if filename contains non alpha-numeric chars or is not 1-16 chars long)
-func (d dfs) Open(fname string, mode FileMode) (f DFSFile, err error) {
+func (d DFSInstance) Open(fname string, mode FileMode) (f DFSFile, err error) {
 	client := d.client
 	server := client.server
 	args := &RPCChunkData{client.clientID, fname, 0, false, false, EMPTY_CHUNK}
@@ -384,7 +337,7 @@ func (d dfs) Open(fname string, mode FileMode) (f DFSFile, err error) {
 		return nil, DisconnectedError(client.serverAddr)
 	}
 
-	file := dfsFile{fname, mode, &d, new(bool)}
+	file := DFSFileInstance{fname, mode, &d, new(bool)}
 	filePath := client.localPath + fname + ".dfs"
 
 	// At this point, we are either connected, or we are disconnected in DREAD
@@ -432,7 +385,9 @@ func (d dfs) Open(fname string, mode FileMode) (f DFSFile, err error) {
 	return file, nil
 }
 
-func (d dfs) UMountDFS() (err error) {
+// Implements DFS.UMountDFS
+//
+func (d DFSInstance) UMountDFS() (err error) {
 	client := d.client
 	server := client.server
 
@@ -446,17 +401,10 @@ func (d dfs) UMountDFS() (err error) {
 	return nil
 }
 
+// Implements DFSFile.Read
 //
-
-type dfsFile struct {
-	fname   string
-	mode    FileMode
-	fs      *dfs
-	invalid *bool
-}
-
-func (f dfsFile) Read(chunkNum uint8, chunk *Chunk) (err error) {
-	client := f.fs.client
+func (f DFSFileInstance) Read(chunkNum uint8, chunk *Chunk) (err error) {
+	client := f.dfs.client
 	path := client.localPath + f.fname + ".dfs"
 
 	if client.disconnected || *f.invalid {
@@ -491,8 +439,10 @@ func (f dfsFile) Read(chunkNum uint8, chunk *Chunk) (err error) {
 	return nil
 }
 
-func (f dfsFile) Write(chunkNum uint8, chunk *Chunk) (err error) {
-	client := f.fs.client
+// Implements DFSFile.Write
+//
+func (f DFSFileInstance) Write(chunkNum uint8, chunk *Chunk) (err error) {
+	client := f.dfs.client
 	server := client.server
 	if f.mode != WRITE {
 		return BadFileModeError(f.mode)
@@ -501,7 +451,6 @@ func (f dfsFile) Write(chunkNum uint8, chunk *Chunk) (err error) {
 		return DisconnectedError(client.serverAddr)
 	}
 
-	// TODO: add write logs
 	args := &RPCChunkData{client.clientID, f.fname, chunkNum, false, false, EMPTY_CHUNK}
 	var ok bool
 	err = server.Call("Server.WriteChunk", args, &ok)
@@ -518,8 +467,10 @@ func (f dfsFile) Write(chunkNum uint8, chunk *Chunk) (err error) {
 	return nil
 }
 
-func (f dfsFile) Close() (err error) {
-	client := f.fs.client
+// Implements DFSFile.Close
+//
+func (f DFSFileInstance) Close() (err error) {
+	client := f.dfs.client
 	if client.disconnected {
 		return DisconnectedError(client.serverAddr)
 	}
@@ -534,12 +485,87 @@ func (f dfsFile) Close() (err error) {
 	return nil
 }
 
+// </EXPORTED METHODS>
+////////////////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+// <OTHER METHODS>
+
+// Heartbeat function to continuously ping the server to let it know that
+// the client is still connected. In case of a disconnection, the client
+// will continuously try to re-connect until it succeeds, after which it
+// will resume sending heartbeats. Disconnections are detected with a
+// short timeout for each sent heartbeat.
 //
+func (c *Client) heartbeat() {
+	timeChan := time.Tick(500 * time.Millisecond)
+	for _ = range timeChan {
+		if !c.mounted {
+			return
+		}
+		if c.disconnected {
+			c.greetServer()
+		} else {
+			timeout := make(chan struct{})
+			done := make(chan *rpc.Call, 1)
+			go func() {
+				time.Sleep(time.Nanosecond*CLIENT_TIMEOUT)
+				close(timeout)
+			}()
+			c.server.Go("Server.Heartbeat", c.clientID, nil, done)
+			go func() {
+				select {
+				case <-done:
+					break
+				case <-timeout:
+					c.disconnected = true
+				}
+			}()
+		}
+	}
+}
 
-///////////////////////////
-// HELPER/UTIL FUNCTIONS //
-///////////////////////////
+// Sends an intial greeting to the server, requesting a new client ID
+// if it doesn't exist, and establishing a two-way RPC connection.
+// This same function is called after recovering from a disconnection.
+//
+func (c *Client) greetServer() {
+	if !c.disconnected {
+		return
+	}
 
+	localAddr, err := acceptServerRPC(c.localIP)
+	if err != nil {
+		return
+	}
+
+	server, err := rpc.Dial("tcp", c.serverAddr)
+	if err == nil {
+		clientIDPath := c.localPath + ".clientid"
+		clientID := getClientID(clientIDPath)
+
+		args := &RPCHelloData{clientID, localAddr}
+		var reply string
+		err = server.Call("Server.Hello", args, &reply)
+		checkError(err)
+
+		if len(reply) > 0 {
+			c.disconnected = false
+			c.server = server
+			c.clientID = reply
+			if len(clientID) == 0 {
+				storeClientID(reply, clientIDPath)
+			}
+		} else {
+			c.disconnected = true
+			c.mounted = false
+		}
+	}
+}
+
+// Fetches a client ID from the local disk.
+//
 func getClientID(clientIDPath string) (clientID string) {
 	clientIDExists, err := checkFileOrDirectory(clientIDPath)
 	checkError(err)
@@ -553,6 +579,8 @@ func getClientID(clientIDPath string) (clientID string) {
 	return clientID
 }
 
+// Stores a client ID to the local disk.
+//
 func storeClientID(clientID, clientIDPath string) {
 	f, err := os.Create(clientIDPath)
 	checkError(err)
@@ -565,6 +593,8 @@ func storeClientID(clientID, clientIDPath string) {
 	f.Sync()
 }
 
+// Accepts an RPC connection from the server.
+//
 func acceptServerRPC(localIP string) (localAddr string, err error) {
 	tcpAddr, err := net.ResolveTCPAddr("tcp", localIP+":0")
 	checkError(err)
@@ -582,6 +612,8 @@ func acceptServerRPC(localIP string) (localAddr string, err error) {
 	return listener.Addr().String(), err
 }
 
+// Checks whether a given file or directory exists.
+//
 func checkFileOrDirectory(path string) (exists bool, err error) {
 	_, err = os.Stat(path)
 	if err == nil {
@@ -594,6 +626,9 @@ func checkFileOrDirectory(path string) (exists bool, err error) {
 	return exists, err
 }
 
+// Determines whether or not a given localPath string is valid.
+// A path is valid if it exists.
+//
 func validateLocalPath(localPath string) error {
 	localPathExists, err := checkFileOrDirectory(localPath)
 	if !localPathExists || err != nil {
@@ -603,6 +638,10 @@ func validateLocalPath(localPath string) error {
 	}
 }
 
+// Determines whether or not a given file name is valid for this
+// DFS. The file name must be 1-16 characters long and contain only
+// lower-case alphanumeric characters.
+//
 func isValidFilename(fname string) bool {
 	if len(fname) == 0 || len(fname) > 16 {
 		return false
@@ -638,12 +677,17 @@ func openFile(path string) (file *os.File) {
 	return file
 }
 
+// Writes a chunk to a file at a specified chunk offset.
+// The file must already be open for writing.
+//
 func writeChunk(file *os.File, chunk *Chunk, chunkNum uint8) {
 	_, err := file.WriteAt(chunk[:], int64(chunkNum*CHUNK_SIZE))
 	checkError(err)
 	file.Sync()
 }
 
+// Reads a chunk from a file at a specified chunk offset.
+//
 func readChunk(path string, chunk *Chunk, chunkNum uint8) {
 	file, err := os.Open(path)
 	checkError(err)
@@ -653,6 +697,7 @@ func readChunk(path string, chunk *Chunk, chunkNum uint8) {
 }
 
 // If error is non-nil, print it out and return it.
+//
 func checkError(err error) error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -660,3 +705,6 @@ func checkError(err error) error {
 	}
 	return nil
 }
+
+// </OTHER METHODS>
+////////////////////////////////////////////////////////////////////////////////////////////
