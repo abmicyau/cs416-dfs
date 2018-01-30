@@ -17,7 +17,7 @@ const FILE_SIZE = 256             // File size in Chunks
 const MAX_CLIENTS = 16            // Max number of clients
 const CID_LENGTH = 32             // Length of client IDs
 const CLIENT_TIMEOUT = 2000000000 // Client timeout in nanoseconds
-const LOG_ENABLED = true
+const LOG_ENABLED = false
 
 var EMPTY_CHUNK Chunk
 var ALPHABET = []rune("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
@@ -457,7 +457,7 @@ func pollWriter(client *DFSClient, file *FileMetadata) {
 	}
 }
 
-// Logging with two levels
+// Logging
 //
 func logMessage(msg string) {
 	if LOG_ENABLED {
