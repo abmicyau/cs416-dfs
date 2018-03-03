@@ -1,13 +1,377 @@
-Total mark: [100/100]
+Total mark: [0/100]
 ---------------------------------------------------
 
-Connected operation [60/100
-* One client; example scenarios [20/100]
-* One reader/writer client and one writer client; example scenarios [20/100]
-* Multiple reader clients and one writer client; example scenarios [20/100]
+Late penalty: 0
 
-Disconnected operation [40/100]
-* One client; example scenarios [20/100]
-* One reader/writer client and one writer client; example scenarios [10/100]
-* Multiple reader clients and one writer client; example scenarios [10/100]
+Connected operation [0/100]
+* Simple open: Client mounts DFS, opens a file, closes it, and then unmounts DFS [0/100]
+* Simple read: Client mounts DFS, opens a file, reads it, closes it, and then unmounts DFS [0/100]
+* Simple write: Client mounts DFS, opens a file, writes to it, reads it, closes it, and then unmounts DFS. [0/100]
+* Simple LocalFileExists: Client mounts DFS, opens a file, closes it, calls LocalFileExists on the file name, and then unmounts DFS [0/100]
+* Simple GlobalFileExists: Client mounts DFS, opens a file, closes it, calls GlobalFileExists on the file name, and then unmounts DFS [0/100]
+* Single client: Client A mounts DFS, opens an invalid file, opens a valid file, reads it, writes it, reads the content back, closes it, and unmounts DFS; client B mounts DFS, calls GlobalFileExists on the file name, cals LocalFileExists on the file name, opens the file, and then unmounts DFS [0/100]
+* One client is able to observe writes from another client (single write operation) [0/100]
+* One client is able to observe writes from another client (double write operation) [0/100]
+* Handling multiple clients attempting to open a file for writing [0/100]
+* Multiple reader clients and one writer client; One client opens for writing, other clients check global file exists [0/100]
+* Multiple reader clients and one writer client; One client opens for writing, other clients open for reading. First client performs three writes, other clients read after each write. [0/100]
+* Multiple reader clients and one writer client; First client writes file, other clients read the changes, first client closes the file. Repeated for each client [0/100]
+
+Disconnected operation [0/100]
+* Client writes file, disconnects; can use DREAD while disconnected [0/100]
+* Client writes file, disconnects; can LocalFileExists while disconnected [0/100]
+* Unobservable transitory disconnections [0/100]
+* Client A opens file F for writing, disconnects. Client B connects and opens F for writing, succeeds [0/100]
+* Client B opens file. Client A writes/closes file, disconnects. Client B writes file. Client A re-connects, reads, observes B changes [0/100]
+* Client A writes file. Client B opens file. Client A writes file, disconnects. Client B observe changes [0/100]
+* Multiple reader clients and one writer client; A opens, A writes, B opens, A disconnects, C opens, C reads [0/100]
+* Multiple reader clients and one writer client; client A opens, B opens, A writes, B reads, A disconnects, C opens, C reads [0/100]
+* Multiple reader clients and one writer client; client A opens, A writes, A closes, B opens, A disconnects, B reads, B writes, B closes, C opens, B disconnects, C reads, C writes, C closes [0/100]
+
+
+===================
+Test execution logs
+===================
+Commit used: 262349ad8a066497cc24bbc736a0b0da757cebe0 go fmt
+
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 08:59:18][Master] Starting test 'DISCONNECTED -- Client writes file, disconnects; can use DREAD while disconnected'
+[2018-03-01 08:59:18][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 08:59:18][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 08:59:18][Client A] DFS mounted
+[2018-03-01 08:59:18][Client A] Opening file 'thefile' for WRITE
+[2018-03-01 08:59:18][Client A] Writing 'Hello from CPSC 416!' on chunk 3 of file 'thefile'
+[2018-03-01 08:59:18][Client A] Closing file 'thefile'
+[2018-03-01 08:59:18][Client A] Going offline (losing connection with server at 10.1.1.7)
+[2018-03-01 08:59:18][Client A] Opening file 'thefile' for DREAD
+[2018-03-01 08:59:28][Master] Requesting Client A to stop
+
+Test ended abruptly with error: Operation Open on client A timed out
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 08:59:35][Master] Starting test 'DISCONNECTED -- Client writes file, disconnects; can use LocalFileExists while disconnected'
+[2018-03-01 08:59:35][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 08:59:35][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 08:59:35][Client A] DFS mounted
+[2018-03-01 08:59:35][Client A] Opening file 'thefile' for WRITE
+[2018-03-01 08:59:35][Master] Requesting Client A to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 08:59:42][Master] Starting test 'DISCONNECTED -- Three Clients - Each client writes and disconnects'
+[2018-03-01 08:59:42][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 08:59:42][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 08:59:42][Client A] DFS mounted
+[2018-03-01 08:59:42][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 08:59:42][Client B] DFS mounted
+[2018-03-01 08:59:42][Client C] Mounting DFS at /tmp/clientC
+[2018-03-01 08:59:42][Client C] DFS mounted
+[2018-03-01 08:59:42][Client A] Opening file 'thefile' for WRITE
+[2018-03-01 08:59:42][Master] Requesting Client C to stop
+[2018-03-01 08:59:42][Master] Requesting Client A to stop
+[2018-03-01 08:59:42][Master] Requesting Client B to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 08:59:51][Master] Starting test 'DISCONNECTED -- Three Clients - A Opens, A Writes, B Opens,  A disconnects, C Opens, C Reads'
+[2018-03-01 08:59:51][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 08:59:51][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 08:59:51][Client A] DFS mounted
+[2018-03-01 08:59:51][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 08:59:51][Client B] DFS mounted
+[2018-03-01 08:59:51][Client A] Opening file 'thefile' for WRITE
+[2018-03-01 08:59:51][Master] Requesting Client A to stop
+[2018-03-01 08:59:52][Master] Requesting Client B to stop
+[2018-03-01 08:59:52][Master] Requesting Client C to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:00:01][Master] Starting test 'DISCONNECTED --  Three Clients: A Opens, B Opens, A Writes, B Reads, A disconnects, C Opens, C Reads'
+[2018-03-01 09:00:01][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:00:01][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:00:01][Client A] DFS mounted
+[2018-03-01 09:00:01][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 09:00:01][Client B] DFS mounted
+[2018-03-01 09:00:01][Client A] Opening file 'thefile' for WRITE
+[2018-03-01 09:00:01][Master] Requesting Client A to stop
+[2018-03-01 09:00:01][Master] Requesting Client B to stop
+[2018-03-01 09:00:01][Master] Requesting Client C to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:00:10][Master] Starting test 'Disconnected — One reader/writer client and one writer client[3]'
+[2018-03-01 09:00:10][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:00:10][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:00:10][Client A] DFS mounted
+[2018-03-01 09:00:10][Client A] Opening file 'drww3' for WRITE
+[2018-03-01 09:00:10][Master] Requesting Client A to stop
+[2018-03-01 09:00:10][Master] Requesting Client B to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:00:18][Master] Starting test 'Disconnected -- One reader/writer client and one writer client[1]'
+[2018-03-01 09:00:18][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:00:18][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:00:18][Client A] DFS mounted
+[2018-03-01 09:00:18][Client A] Opening file 'drww1' for WRITE
+[2018-03-01 09:00:18][Master] Requesting Client B to stop
+[2018-03-01 09:00:18][Master] Requesting Client A to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:00:25][Master] Starting test 'Disconnected — One reader/writer client and one writer client[2]'
+[2018-03-01 09:00:25][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:00:25][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 09:00:25][Client B] DFS mounted
+[2018-03-01 09:00:25][Client B] Opening file 'drww2' for WRITE
+[2018-03-01 09:00:25][Master] Requesting Client A to stop
+[2018-03-01 09:00:25][Master] Requesting Client B to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client B: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:00:33][Master] Starting test 'Disconnected — One reader/writer client and one writer client[3]'
+[2018-03-01 09:00:33][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:00:33][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:00:33][Client A] DFS mounted
+[2018-03-01 09:00:33][Client A] Opening file 'drww3' for WRITE
+[2018-03-01 09:00:33][Master] Requesting Client A to stop
+[2018-03-01 09:00:33][Master] Requesting Client B to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:00:42][Master] Starting test 'CONNECTED -- Three Clients Read And Write File'
+[2018-03-01 09:00:42][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:00:42][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:00:42][Client A] DFS mounted
+[2018-03-01 09:00:42][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 09:00:42][Client B] DFS mounted
+[2018-03-01 09:00:42][Client C] Mounting DFS at /tmp/clientC
+[2018-03-01 09:00:42][Client C] DFS mounted
+[2018-03-01 09:00:42][Client A] Opening file 'thefile' for WRITE
+[2018-03-01 09:00:42][Master] Requesting Client A to stop
+[2018-03-01 09:00:42][Master] Requesting Client B to stop
+[2018-03-01 09:00:42][Master] Requesting Client C to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:00:51][Master] Starting test 'CONNECTED -- Three Clients: One Client Writes, Other Clients Read'
+[2018-03-01 09:00:51][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:00:51][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:00:51][Client A] DFS mounted
+[2018-03-01 09:00:51][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 09:00:51][Client B] DFS mounted
+[2018-03-01 09:00:51][Client C] Mounting DFS at /tmp/clientC
+[2018-03-01 09:00:51][Client C] DFS mounted
+[2018-03-01 09:00:51][Client A] Opening file 'thefile' for WRITE
+[2018-03-01 09:00:51][Master] Requesting Client B to stop
+[2018-03-01 09:00:51][Master] Requesting Client C to stop
+[2018-03-01 09:00:51][Master] Requesting Client A to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:01:00][Master] Starting test 'CONNECTED -- Clients open files and other clients check file exists'
+[2018-03-01 09:01:00][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:01:00][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:01:00][Client A] DFS mounted
+[2018-03-01 09:01:00][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 09:01:00][Client B] DFS mounted
+[2018-03-01 09:01:00][Client C] Mounting DFS at /tmp/clientC
+[2018-03-01 09:01:00][Client C] DFS mounted
+[2018-03-01 09:01:00][Client A] Opening file 'thefileA' for Write
+[2018-03-01 09:01:00][Master] Requesting Client C to stop
+[2018-03-01 09:01:00][Master] Requesting Client A to stop
+[2018-03-01 09:01:00][Master] Requesting Client B to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Filename [thefileA] includes illegal characters or has the wrong length
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:01:09][Master] Starting test 'CONNECTED -- Observing writes (double write)'
+[2018-03-01 09:01:09][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:01:09][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:01:09][Client A] DFS mounted
+[2018-03-01 09:01:09][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 09:01:09][Client B] DFS mounted
+[2018-03-01 09:01:09][Client A] Opening file 'myfile' for WRITE
+[2018-03-01 09:01:09][Master] Requesting Client A to stop
+[2018-03-01 09:01:09][Master] Requesting Client B to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:01:17][Master] Starting test 'CONNECTED -- Observing writes (single write)'
+[2018-03-01 09:01:17][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:01:17][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:01:17][Client A] DFS mounted
+[2018-03-01 09:01:17][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 09:01:17][Client B] DFS mounted
+[2018-03-01 09:01:17][Client A] Opening file 'myfile' for WRITE
+[2018-03-01 09:01:17][Master] Requesting Client A to stop
+[2018-03-01 09:01:17][Master] Requesting Client B to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:01:25][Master] Starting test 'CONNECTED -- Two Clients Open Same File for Writing'
+[2018-03-01 09:01:25][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:01:25][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:01:25][Client A] DFS mounted
+[2018-03-01 09:01:25][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 09:01:25][Client B] DFS mounted
+[2018-03-01 09:01:25][Client A] Opening file 'thefile' for WRITE
+[2018-03-01 09:01:25][Master] Requesting Client A to stop
+[2018-03-01 09:01:25][Master] Requesting Client B to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:01:33][Master] Starting test 'CONNECTED -- Simple GlobalFileExists'
+[2018-03-01 09:01:33][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:01:33][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:01:33][Client A] DFS mounted
+[2018-03-01 09:01:33][Client B] Mounting DFS at /tmp/clientB
+[2018-03-01 09:01:33][Client B] DFS mounted
+[2018-03-01 09:01:33][Client A] Opening file 'myfile' for READ
+[2018-03-01 09:01:33][Master] Requesting Client A to stop
+[2018-03-01 09:01:33][Master] Requesting Client B to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:01:40][Master] Starting test 'CONNECTED -- Simple LocalFileExists'
+[2018-03-01 09:01:40][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:01:40][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:01:40][Client A] DFS mounted
+[2018-03-01 09:01:40][Client A] Opening file 'myfile' for READ
+[2018-03-01 09:01:40][Master] Requesting Client A to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:01:46][Master] Starting test 'CONNECTED -- Simple open'
+[2018-03-01 09:01:46][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:01:46][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:01:46][Client A] DFS mounted
+[2018-03-01 09:01:46][Client A] Opening file 'myfile' for READ
+[2018-03-01 09:01:46][Master] Requesting Client A to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:01:53][Master] Starting test 'CONNECTED -- Simple read'
+[2018-03-01 09:01:53][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:01:53][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:01:53][Client A] DFS mounted
+[2018-03-01 09:01:53][Client A] Opening file 'myfile' for READ
+[2018-03-01 09:01:53][Master] Requesting Client A to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:01:59][Master] Starting test 'CONNECTED -- Simple write'
+[2018-03-01 09:01:59][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:01:59][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:01:59][Client A] DFS mounted
+[2018-03-01 09:01:59][Client A] Opening file 'myfile' for WRITE
+[2018-03-01 09:01:59][Master] Requesting Client A to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:02:06][Master] Starting test 'CONNECTED -- Single Client'
+[2018-03-01 09:02:06][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:02:06][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:02:06][Client A] DFS mounted
+[2018-03-01 09:02:06][Client A] Opening file 'Invalid name!' for WRITE [error expected: BadFilenameError]
+[2018-03-01 09:02:06][Client A] Opening file 'myfile' for WRITE
+[2018-03-01 09:02:06][Master] Requesting Client A to stop
+[2018-03-01 09:02:06][Master] Requesting Client B to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
+
+
+===================
+
+[TESTS] Running command [~/master -server 10.1.1.7:4444 -test test.json] on Azure VM
+[2018-03-01 09:02:13][Master] Starting test 'DISCONNECTED -- transitory disconnections should be unobservable'
+[2018-03-01 09:02:13][Master] Setting up RPC interface at 10.1.1.6:8484
+[2018-03-01 09:02:13][Client A] Mounting DFS at /tmp/clientA
+[2018-03-01 09:02:13][Client A] DFS mounted
+[2018-03-01 09:02:13][Client A] Opening file 'thefile' for WRITE
+[2018-03-01 09:02:13][Master] Requesting Client A to stop
+
+Test ended abruptly with error: Error processing 'Open' by Client A: DFS: Not connected to server [10.1.1.7:4444]
 
